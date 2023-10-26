@@ -4,12 +4,17 @@
 This is a library for calculating FLOPs of pytorch models. Compared with other  libraries such as [`thop`](https://github.com/Lyken17/pytorch-OpCounter), [`ptflops`](https://github.com/sovrasov/flops-counter.pytorch), [`torchinfo`](https://github.com/TylerYep/torchinfo) and [`torchanalyse`](https://github.com/HaoKang-Timmy/torchanalyse), the **advantage of this library** is that it can capture **all calculation operations** in the `forward` process, **not limited to only the subclasses of** `nn.Module`.
 
 ## Usage
-## Requirements
+### Installation
+```
+pip install torch_flops
+```
+
+### Requirements
 
 + pytorch >= 1.8 (needs `torch.fx` support)
 + tabulate (for printing the summary of operations)
 
-## Example
+### Example
 An example of calculating the FLOPs for an attention block is provided in [`example.py`](example.py). The example requires the [`timm`](https://github.com/huggingface/pytorch-image-models) library. However, You can define a simple model to check the result (see [`compare.py`](compare.py)).
 
 ```python
