@@ -10,7 +10,7 @@ This is a library for calculating FLOPs of pytorch models. Compared with other  
 + tabulate (for printing the summary of operations)
 
 ## Example
-An example of calculating the FLOPs for an attention block is provided in `example.py`. The example requires the [`timm`](https://github.com/huggingface/pytorch-image-models) library. However, You can define a simple model to check the result (see [`compare.py`](example.py)).
+An example of calculating the FLOPs for an attention block is provided in [`example.py`](example.py). The example requires the [`timm`](https://github.com/huggingface/pytorch-image-models) library. However, You can define a simple model to check the result (see [`compare.py`](compare.py)).
 
 ```python
 C = 768
@@ -42,9 +42,9 @@ flops_counter.print_result_table()
 total_flops = flops_counter.print_total_flops()
 ```
 # Advantage
-`torch_flops` can capture all the operations excuted in the forward including the operations not warpped by `nn.Module`, like `torch.matmul`, `@`, `+` and `tensor.exp`, and it can ignore the FLOPs of the modules not used in the forward process.
+`torch_flops` can capture all the operations excuted in the forward including the operations not wrapped by `nn.Module`, like `torch.matmul`, `@`, `+` and `tensor.exp`, and it can ignore the FLOPs of the modules not used in the forward process.
 
-There is a comparison of `torch_flops` (this repo), `torchanalyse`, `thop` and `ptflops` in the script `compare.py`.
+There is a comparison of `torch_flops` (this repo), `torchanalyse`, `thop` and `ptflops` in the script [`compare.py`](compare.py).
 The output of
 
 `python compare.py`:
@@ -56,7 +56,7 @@ SimpleModel(
 )
 tensor([[-0.2077,  0.2623,  1.3978, -0.4170]], grad_fn=<AddmmBackward0>)
 ================================================================================
-**************************************** flops_counter ****************************************
+**************************************** torch_flops ****************************************
 ===========  ===========  ===========  =====================  =======
 node_name    node_op      op_target    nn_module_stack[-1]      flops
 ===========  ===========  ===========  =====================  =======
@@ -95,7 +95,7 @@ SimpleModel(
 )
 tensor([[1.0426, 0.6963, 1.7114, 1.6526]], grad_fn=<AddBackward0>)
 ================================================================================
-**************************************** flops_counter ****************************************
+**************************************** torch_flops ****************************************
 ===========  =============  =======================  =====================  =======
 node_name    node_op        op_target                nn_module_stack[-1]      flops
 ===========  =============  =======================  =====================  =======

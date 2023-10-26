@@ -37,7 +37,7 @@ if __name__ == "__main__":
     print("=" * 80)
 
     # =========
-    print("*" * 40 + " flops_counter " + "*" * 40)
+    print("*" * 40 + " torch_flops " + "*" * 40)
     flops_counter = TorchFLOPsByFX(model)
     # flops_counter.graph_model.graph.print_tabular()
     flops_counter.propagate(x)
