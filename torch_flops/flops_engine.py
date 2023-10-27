@@ -339,7 +339,7 @@ class TorchFLOPsByFX():
             node_module_name = ''
             if (_var_name := 'nn_module_stack') in node.meta:
                 node_module_name = next(reversed(node.meta[_var_name].values())).__name__
-                # node_module_seq = list(node.meta[_var_name].values())
+                # node_module_name = ".".join([_v.__name__ for _v in node.meta[_var_name].values()])
             _result_row.append(node_module_name)
 
             if (_var_name := 'flops') in node.meta:

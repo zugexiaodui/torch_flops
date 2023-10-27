@@ -288,6 +288,8 @@ FUNCTION_FLOPs_MAPPING = {
     'getattr': FunctionFLOPs_zero,
     'getitem': FunctionFLOPs_zero,
     'mul': FunctionFLOPs_elemwise,
+    'truediv': FunctionFLOPs_elemwise,
+    'sub': FunctionFLOPs_elemwise,
     'matmul': FunctionFLOPs_matmul,
     'add': FunctionFLOPs_elemwise,
     'concat': FunctionFLOPs_zero,
