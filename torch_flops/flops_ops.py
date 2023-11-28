@@ -265,6 +265,8 @@ MODULE_FLOPs_MAPPING = {
     'AvgPool2d': ModuleFLOPs_AvgPoolNd,
     'AvgPool3d': ModuleFLOPs_AvgPoolNd,
     'AdaptiveAvgPool1d': ModuleFLOPs_AdaptiveAvgPoolNd,
+    'AdaptiveAvgPool2d': ModuleFLOPs_AdaptiveAvgPoolNd,
+    'AdaptiveAvgPool3d': ModuleFLOPs_AdaptiveAvgPoolNd,
     'MaxPool1d': ModuleFLOPs_MaxPoolNd,
     'MaxPool2d': ModuleFLOPs_MaxPoolNd,
     'MaxPool3d': ModuleFLOPs_MaxPoolNd,

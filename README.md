@@ -16,8 +16,23 @@ pip install torch_flops
 + pytorch >= 1.8 (needs `torch.fx` support)
 + tabulate (for printing the summary of operations)
 
-### Example
-An example of calculating the FLOPs for an attention block is provided in [`example.py`](example.py). The example requires the [`timm`](https://github.com/huggingface/pytorch-image-models) library. However, You can define a simple model to check the result (see [`compare.py`](compare.py)).
+### Example 1
+An expamle for calculating the FLOPs of ViT-base16 and ResNet-50 is given in [`example1.py`](example1.py). The example requires the [`timm`](https://github.com/huggingface/pytorch-image-models) library. You can calculate the FLOPs in three lines:
+```python
+    flops_counter = TorchFLOPsByFX(resnet)
+    flops_counter.propagate(x)
+    total_flops = flops_counter.print_total_flops(show=True)
+```
+The output of `example1.py` is:
+```
+========== vit_base16 ==========
+total_flops = 35,164,979,282 
+========== resnet50 ==========
+total_flops = 8,227,340,288
+```
+
+### Example 2
+Another example of calculating the FLOPs for an attention block is provided in [`example2.py`](example2.py). However, You can define a simple model to check the result (see [`compare.py`](compare.py)).
 
 ```python
 C = 768
@@ -48,6 +63,8 @@ flops_counter.print_result_table()
 # Print the total FLOPs
 total_flops = flops_counter.print_total_flops()
 ```
+You can also feed more than one sequential arguments for the model in `propagate()` if the `model.forward()` function need not only one arguments.
+
 # Advantage
 `torch_flops` can capture all the operations excuted in the forward including the operations not wrapped by `nn.Module`, like `torch.matmul`, `@`, `+` and `tensor.exp`, and it can ignore the FLOPs of the modules not used in the forward process.
 
@@ -150,6 +167,8 @@ MODULE_FLOPs_MAPPING = {
     'AvgPool2d': ModuleFLOPs_AvgPoolNd,
     'AvgPool3d': ModuleFLOPs_AvgPoolNd,
     'AdaptiveAvgPool1d': ModuleFLOPs_AdaptiveAvgPoolNd,
+    'AdaptiveAvgPool2d': ModuleFLOPs_AdaptiveAvgPoolNd,
+    'AdaptiveAvgPool3d': ModuleFLOPs_AdaptiveAvgPoolNd,
     'MaxPool1d': ModuleFLOPs_MaxPoolNd,
     'MaxPool2d': ModuleFLOPs_MaxPoolNd,
     'MaxPool3d': ModuleFLOPs_MaxPoolNd,
@@ -173,6 +192,8 @@ FUNCTION_FLOPs_MAPPING = {
     'getattr': FunctionFLOPs_zero,
     'getitem': FunctionFLOPs_zero,
     'mul': FunctionFLOPs_elemwise,
+    'truediv': FunctionFLOPs_elemwise,
+    'sub': FunctionFLOPs_elemwise,
     'matmul': FunctionFLOPs_matmul,
     'add': FunctionFLOPs_elemwise,
     'concat': FunctionFLOPs_zero,
