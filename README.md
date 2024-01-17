@@ -13,6 +13,7 @@ pip install torch_flops
 
 ### Requirements
 
++ python >= 3.10 (new python features)
 + pytorch >= 1.8 (needs `torch.fx` support)
 + tabulate (for printing the summary of operations)
 
