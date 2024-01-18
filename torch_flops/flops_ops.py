@@ -211,6 +211,17 @@ def FunctionFLOPs_matmul(result: Tensor, *args, **kwargs) -> int:
     return total_flops
 
 
+def FunctionFLOPs_linear(result: Tensor, *args, **kwargs) -> int:
+    assert len(args) == 3, len(args)
+    input, weight, bias = args
+    assert isinstance(input, Tensor) and isinstance(weight, Tensor)
+
+    total_flops = flops_matmul(input.shape, weight.T.shape, result.shape)
+    if bias is not None:
+        total_flops += flops_elemwise(result.shape)
+    return total_flops
+
+
 def MethodFLOPs_zero(self_obj: Tensor, result: Tensor, *args_tail, **kwargs) -> int:
     return flops_zero()
 
@@ -298,6 +309,7 @@ FUNCTION_FLOPs_MAPPING = {
     '_assert': FunctionFLOPs_zero,
     'eq': FunctionFLOPs_elemwise,
     'cat': FunctionFLOPs_zero,
+    'linear': FunctionFLOPs_linear,
 }
 METHOD_FLOPs_MAPPING = {
     'reshape': MethodFLOPs_zero,

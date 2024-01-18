@@ -13,8 +13,8 @@ pip install torch_flops
 
 ### Requirements
 
-+ python >= 3.10 (new python features)
-+ pytorch >= 1.8 (needs `torch.fx` support)
++ python >= 3.10 (for new python features)
++ pytorch >= 1.8 (for `torch.fx` support)
 + tabulate (for printing the summary of operations)
 
 ### Example 1
@@ -201,6 +201,7 @@ FUNCTION_FLOPs_MAPPING = {
     '_assert': FunctionFLOPs_zero,
     'eq': FunctionFLOPs_elemwise,
     'cat': FunctionFLOPs_zero,
+    'linear': FunctionFLOPs_linear,
 }
 METHOD_FLOPs_MAPPING = {
     'reshape': MethodFLOPs_zero,
