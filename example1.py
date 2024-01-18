@@ -1,8 +1,10 @@
+import os
+os.environ['TIMM_FUSED_ATTN'] = "0"
+
 import torch
 from torch import Tensor
 import timm
 import warnings
-import os
 warnings.filterwarnings('ignore')
 
 from torch_flops import TorchFLOPsByFX
@@ -12,7 +14,6 @@ Count the FLOPs of ViT-B16 and ResNet-50.
 '''
 
 if __name__ == "__main__":
-    os.environ['TIMM_FUSED_ATTN'] = "0"
     # Define the models
     vit = timm.create_model('vit_base_patch16_224')
     resnet = timm.create_model('resnet50')
@@ -31,11 +32,12 @@ if __name__ == "__main__":
     flops_counter.propagate(x)
     # # Print the flops of each node in the graph. Note that if there are unsupported operations, the "flops" of these ops will be marked as 'not recognized'.
     # print('*' * 120)
-    # flops_counter.print_result_table()
+    flops_counter.print_result_table()
     # # Print the total FLOPs
     total_flops = flops_counter.print_total_flops(show=True)
 
     print("=" * 10, "resnet50", "=" * 10)
     flops_counter = TorchFLOPsByFX(resnet)
     flops_counter.propagate(x)
+    flops_counter.print_result_table()
     total_flops = flops_counter.print_total_flops(show=True)

@@ -5,6 +5,8 @@
 
 This is a library for calculating FLOPs of pytorch models. Compared with other  libraries such as [`thop`](https://github.com/Lyken17/pytorch-OpCounter), [`ptflops`](https://github.com/sovrasov/flops-counter.pytorch), [`torchinfo`](https://github.com/TylerYep/torchinfo) and [`torchanalyse`](https://github.com/HaoKang-Timmy/torchanalyse), the **advantage of this library** is that it can capture **all calculation operations** in the `forward` process, **not limited to only the subclasses of** `nn.Module`.
 
+Update Note: Introducing support for displaying the execution time of each operation. Please use `flops_counter.print_result_table()` to see the detailed results.
+
 ## Usage
 ### Installation
 ```

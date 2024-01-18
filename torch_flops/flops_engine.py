@@ -9,6 +9,7 @@ import traceback
 from tabulate import tabulate
 from typing import Any, Tuple, NamedTuple, Optional, Dict, Sequence
 from copy import deepcopy
+import time
 
 from torch_flops.flops_ops import MODULE_FLOPs_MAPPING, METHOD_FLOPs_MAPPING, FUNCTION_FLOPs_MAPPING
 
@@ -258,12 +259,17 @@ class ShapeProp(torch.fx.Interpreter):
                         assert isinstance(args, tuple)
                         assert isinstance(kwargs, dict)
                         if n.op in ('call_module', 'call_function', 'call_method'):
+                            t_start = time.time()
                             result, flops = getattr(self, n.op)(n.target, args, kwargs)
+                            t_end = time.time()
                         else:
+                            t_start = time.time()
                             result = getattr(self, n.op)(n.target, args, kwargs)
+                            t_end = time.time()
                             flops = 0
                         assert flops not in n.meta, n.meta.keys()
                         n.meta['flops'] = flops
+                        n.meta['time'] = (t_end - t_start) * 1000
             finally:
                 self.module = self.real_module
         except Exception as e:
@@ -325,7 +331,7 @@ class TorchFLOPsByFX():
         self.ignore_ops = deepcopy(ignore_ops)
 
         self.result_table = []
-        self.result_header = ['node_name', 'node_op', 'op_target', 'nn_module_stack[-1]', 'flops']
+        self.result_header = ['node_name', 'node_op', 'op_target', 'nn_module_stack[-1]', 'flops', 'time(ms)']
         self.__missing_values = [''] * 4 + ['ERROR']
 
     def propagate(self, *args):
@@ -342,19 +348,20 @@ class TorchFLOPsByFX():
                 # node_module_name = ".".join([_v.__name__ for _v in node.meta[_var_name].values()])
             _result_row.append(node_module_name)
 
-            if (_var_name := 'flops') in node.meta:
-                flops = node.meta[_var_name]
-                if flops is None:
-                    _result_row.append('not_recognized')
-                elif isinstance(flops, int):
-                    if node_module_name in self.ignore_ops:
-                        _result_row.append('ignored')
+            for _var_name in ('flops', 'time'):
+                if _var_name in node.meta:
+                    _var_val = node.meta[_var_name]
+                    if _var_val is None:
+                        _result_row.append('not_recognized')
+                    elif isinstance(_var_val, (int, float)):
+                        if node_module_name in self.ignore_ops:
+                            _result_row.append('ignored')
+                        else:
+                            _result_row.append(_var_val)
                     else:
-                        _result_row.append(flops)
+                        raise TypeError(type(_var_val))
                 else:
-                    raise TypeError(type(flops))
-            else:
-                raise KeyError("'flops' must be in node.meta")
+                    raise KeyError(f"'{_var_name}' must be in node.meta")
 
             assert len(_result_row) == len(self.result_header)
             result_table.append(_result_row)
@@ -371,7 +378,7 @@ class TorchFLOPsByFX():
         if len(self.result_table) == 0:
             raise RuntimeError(f"Use `propagate()` method first.")
 
-        valid_flops_list = list(filter(lambda _f: isinstance(_f, int), list(zip(*self.result_table))[-1]))
+        valid_flops_list = list(filter(lambda _f: isinstance(_f, int), list(zip(*self.result_table))[4]))
         total_flops = sum(valid_flops_list)
         num_empty_flops = len(self.result_table) - len(valid_flops_list)
 
