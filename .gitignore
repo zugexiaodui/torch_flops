@@ -5,3 +5,4 @@ dist/
 *.egg-info/
 TODO.md
 temp/
+package_*.sh

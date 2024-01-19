@@ -147,6 +147,7 @@ class ShapeProp(torch.fx.Interpreter):
 
         self.real_module = self.module
         self.ignore_ops = ignore_ops
+        self.device = next(gm.parameters()).device
 
     @compatibility(is_backward_compatible=True)
     def call_module(self, target: 'Target', args: Tuple[Argument, ...], kwargs: Dict[str, Any]) -> Any:
@@ -258,21 +259,26 @@ class ShapeProp(torch.fx.Interpreter):
                         args, kwargs = self.fetch_args_kwargs_from_env(n)
                         assert isinstance(args, tuple)
                         assert isinstance(kwargs, dict)
+
                         mem_func = torch.cuda.memory_allocated
+                        m_start = mem_func()
+                        if self.device.type == 'cuda':
+                            torch.cuda.synchronize()
+                        t_start = time.time()
+
                         if n.op in ('call_module', 'call_function', 'call_method'):
-                            m_start = mem_func()
-                            t_start = time.time()
                             result, flops = getattr(self, n.op)(n.target, args, kwargs)
-                            t_end = time.time()
-                            m_end = mem_func()
                         else:
-                            m_start = mem_func()
-                            t_start = time.time()
                             result = getattr(self, n.op)(n.target, args, kwargs)
-                            t_end = time.time()
-                            m_end = mem_func()
                             flops = 0
+
+                        if self.device.type == 'cuda':
+                            torch.cuda.synchronize()
+                        t_end = time.time()
+                        m_end = mem_func()
+
                         assert flops not in n.meta, n.meta.keys()
+
                         n.meta['flops'] = flops
                         n.meta['time'] = (t_end - t_start) * 1000
                         n.meta['mem_before'] = m_start

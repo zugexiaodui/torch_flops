@@ -36,7 +36,7 @@ total_flops = 35,164,979,282
 ========== resnet50 ==========
 total_flops = 8,227,340,288
 ```
-![image](./assets/screen_shot.png)
+![image](./src/screen_shot.png)
 
 ### Example 2
 Another example of calculating the FLOPs for an attention block is provided in [`example2.py`](example2.py). However, You can define a simple model to check the result (see [`compare.py`](compare.py)).
