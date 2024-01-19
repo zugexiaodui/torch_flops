@@ -166,10 +166,20 @@ class ShapeProp(torch.fx.Interpreter):
         """
         # Retrieve executed args and kwargs values from the environment
 
-        # Execute the method and return the result
         assert isinstance(target, str)
         submod = self.fetch_attr(target)
+
+        if self.device.type == 'cuda':
+            torch.cuda.synchronize()
+        t_start = time.time()
+
+        # Execute the method and return the result
         result = submod(*args, **kwargs)
+
+        if self.device.type == 'cuda':
+            torch.cuda.synchronize()
+        t_end = time.time()
+        exec_time = (t_end - t_start) * 1000
 
         # 计算出来result之后再计算FLOPs，保证计算过程能正确执行
         mod_name = submod.__class__.__name__
@@ -180,7 +190,7 @@ class ShapeProp(torch.fx.Interpreter):
             else:
                 flops = 0
 
-        return result, flops
+        return result, flops, exec_time
 
     @compatibility(is_backward_compatible=True)
     def call_function(self, target: 'Target', args: Tuple[Argument, ...], kwargs: Dict[str, Any]) -> Any:
@@ -199,8 +209,17 @@ class ShapeProp(torch.fx.Interpreter):
         """
         assert not isinstance(target, str)
 
+        if self.device.type == 'cuda':
+            torch.cuda.synchronize()
+        t_start = time.time()
+
         # Execute the function and return the result
         result = target(*args, **kwargs)
+
+        if self.device.type == 'cuda':
+            torch.cuda.synchronize()
+        t_end = time.time()
+        exec_time = (t_end - t_start) * 1000
 
         # 计算出来result之后再计算FLOPs，保证计算过程能正确执行
         func_name = target.__name__
@@ -211,7 +230,7 @@ class ShapeProp(torch.fx.Interpreter):
             else:
                 flops = 0
 
-        return result, flops
+        return result, flops, exec_time
 
     @compatibility(is_backward_compatible=True)
     def call_method(self, target: 'Target', args: Tuple[Argument, ...], kwargs: Dict[str, Any]) -> Any:
@@ -231,9 +250,19 @@ class ShapeProp(torch.fx.Interpreter):
         # args[0] is the `self` object for this method call
         self_obj, *args_tail = args
 
-        # Execute the method and return the result
         assert isinstance(target, str)
+
+        if self.device.type == 'cuda':
+            torch.cuda.synchronize()
+        t_start = time.time()
+
+        # Execute the method and return the result
         result = getattr(self_obj, target)(*args_tail, **kwargs)
+
+        if self.device.type == 'cuda':
+            torch.cuda.synchronize()
+        t_end = time.time()
+        exec_time = (t_end - t_start) * 1000
 
         # 计算出来result之后再计算FLOPs，保证计算过程能正确执行
         method_name = target
@@ -243,7 +272,7 @@ class ShapeProp(torch.fx.Interpreter):
                 flops = METHOD_FLOPs_MAPPING[method_name](self_obj, result, *args_tail, **kwargs)
             else:
                 flops = 0
-        return result, flops
+        return result, flops, exec_time
 
     def run_node(self, n: Node) -> Any:
         try:
@@ -262,25 +291,29 @@ class ShapeProp(torch.fx.Interpreter):
 
                         mem_func = torch.cuda.memory_allocated
                         m_start = mem_func()
-                        if self.device.type == 'cuda':
-                            torch.cuda.synchronize()
-                        t_start = time.time()
 
                         if n.op in ('call_module', 'call_function', 'call_method'):
-                            result, flops = getattr(self, n.op)(n.target, args, kwargs)
+                            result, flops, exec_time = getattr(self, n.op)(n.target, args, kwargs)
                         else:
+                            if self.device.type == 'cuda':
+                                torch.cuda.synchronize()
+                            t_start = time.time()
+
                             result = getattr(self, n.op)(n.target, args, kwargs)
+
+                            if self.device.type == 'cuda':
+                                torch.cuda.synchronize()
+                            t_end = time.time()
+                            exec_time = (t_end - t_start) * 1000
+
                             flops = 0
 
-                        if self.device.type == 'cuda':
-                            torch.cuda.synchronize()
-                        t_end = time.time()
                         m_end = mem_func()
 
                         assert flops not in n.meta, n.meta.keys()
 
                         n.meta['flops'] = flops
-                        n.meta['time'] = (t_end - t_start) * 1000
+                        n.meta['time'] = exec_time
                         n.meta['mem_before'] = m_start
                         n.meta['mem_after'] = m_end
                         n.meta['mem_delta'] = m_end - m_start
