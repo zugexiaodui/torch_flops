@@ -258,18 +258,26 @@ class ShapeProp(torch.fx.Interpreter):
                         args, kwargs = self.fetch_args_kwargs_from_env(n)
                         assert isinstance(args, tuple)
                         assert isinstance(kwargs, dict)
+                        mem_func = torch.cuda.memory_allocated
                         if n.op in ('call_module', 'call_function', 'call_method'):
+                            m_start = mem_func()
                             t_start = time.time()
                             result, flops = getattr(self, n.op)(n.target, args, kwargs)
                             t_end = time.time()
+                            m_end = mem_func()
                         else:
+                            m_start = mem_func()
                             t_start = time.time()
                             result = getattr(self, n.op)(n.target, args, kwargs)
                             t_end = time.time()
+                            m_end = mem_func()
                             flops = 0
                         assert flops not in n.meta, n.meta.keys()
                         n.meta['flops'] = flops
                         n.meta['time'] = (t_end - t_start) * 1000
+                        n.meta['mem_before'] = m_start
+                        n.meta['mem_after'] = m_end
+                        n.meta['mem_delta'] = m_end - m_start
             finally:
                 self.module = self.real_module
         except Exception as e:
@@ -323,7 +331,10 @@ class TorchFLOPsByFX():
             self.graph_model: GraphModule = symbolic_trace(model)
         except torch.fx.proxy.TraceError as e:
             print("\033[33mNOTE: The model cannot be built as a graph model by 'symbolic_trace()'. Please remove the `assert`, `if` and `for` operations. " +
-                  "See 'https://pytorch.org/docs/stable/fx.html#limitations-of-symbolic-tracing' for more solutions.\033[0m")
+                  "See 'https://pytorch.org/docs/stable/fx.html#limitations-of-symbolic-tracing' for more instructions.\033[0m")
+            raise e
+        except TypeError as e:
+            print("\033[33mNOTE: The model cannot be built as a graph model by 'symbolic_trace()'. Please replace the `tensor.shape[i]` that servers as the parameter of a function with a pre-defined deterministic value.\033[0m")
             raise e
 
         if isinstance(ignore_ops, str):
@@ -331,7 +342,7 @@ class TorchFLOPsByFX():
         self.ignore_ops = deepcopy(ignore_ops)
 
         self.result_table = []
-        self.result_header = ['node_name', 'node_op', 'op_target', 'nn_module_stack[-1]', 'flops', 'time(ms)']
+        self.result_header = ['node_name', 'node_op', 'op_target', 'nn_module_stack[-1]', 'flops', 'time(ms)', 'mem_before_op(B)', 'mem_after_op(B)', 'mem_delta(B)']
         self.__missing_values = [''] * 4 + ['ERROR']
 
     def propagate(self, *args):
@@ -348,7 +359,7 @@ class TorchFLOPsByFX():
                 # node_module_name = ".".join([_v.__name__ for _v in node.meta[_var_name].values()])
             _result_row.append(node_module_name)
 
-            for _var_name in ('flops', 'time'):
+            for _var_name in ('flops', 'time', 'mem_before', 'mem_after', 'mem_delta'):
                 if _var_name in node.meta:
                     _var_val = node.meta[_var_name]
                     if _var_val is None:
@@ -369,7 +380,10 @@ class TorchFLOPsByFX():
         self.result_table = result_table
 
     def print_result_table(self, show: bool = True):
-        table_str = tabulate(self.result_table, self.result_header, tablefmt='rst', missingval=self.__missing_values)
+        table_str = tabulate(self.result_table, self.result_header, tablefmt='rst',
+                             intfmt=[''] * 4 + [','] + [''] + [','] * 2 + ['+,'],
+                             floatfmt='.3f',
+                             missingval=self.__missing_values)
         if show:
             print(table_str)
         return table_str

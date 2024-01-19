@@ -122,6 +122,7 @@ class Block(nn.Module):
 
 if __name__ == "__main__":
     C = 768
+    device = 'cuda:0'
 
     # Define the model: an attention block (refer to "timm": https://github.com/huggingface/pytorch-image-models/blob/main/timm/models/vision_transformer.py)
     block = Block(C, num_heads=2, qkv_bias=True)
@@ -133,16 +134,17 @@ if __name__ == "__main__":
     # N: number of tokens
     N = 14**2 + 1
     B = 1
-    x = torch.randn([B, N, C])
+    x = torch.randn([B, N, C]).to(device)
 
     # Output
     # Build the graph of the model. You can specify the operations (listed in `MODULE_FLOPs_MAPPING`, `FUNCTION_FLOPs_MAPPING` and `METHOD_FLOPs_MAPPING` in 'flops_ops.py') to ignore.
-    flops_counter = TorchFLOPsByFX(model)
+    flops_counter = TorchFLOPsByFX(model.to(device))
     # Print the grath (not essential)
     print('*' * 120)
     flops_counter.graph_model.graph.print_tabular()
     # Feed the input tensor
-    flops_counter.propagate(x)
+    with torch.no_grad():
+        flops_counter.propagate(x)
     # Print the flops of each node in the graph. Note that if there are unsupported operations, the "flops" of these ops will be marked as 'not recognized'.
     print('*' * 120)
     flops_counter.print_result_table()

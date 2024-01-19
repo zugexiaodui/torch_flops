@@ -5,12 +5,15 @@
 
 This is a library for calculating FLOPs of pytorch models. Compared with other  libraries such as [`thop`](https://github.com/Lyken17/pytorch-OpCounter), [`ptflops`](https://github.com/sovrasov/flops-counter.pytorch), [`torchinfo`](https://github.com/TylerYep/torchinfo) and [`torchanalyse`](https://github.com/HaoKang-Timmy/torchanalyse), the **advantage of this library** is that it can capture **all calculation operations** in the `forward` process, **not limited to only the subclasses of** `nn.Module`.
 
-Update Note: Introducing support for displaying the execution time of each operation. Please use `flops_counter.print_result_table()` to see the detailed results.
+**Update Note**: Introducing support for displaying the **execution time** of each operation. Please use `flops_counter.print_result_table()` to see the detailed results.
+
+**Update Note**: Introducing support for displaying the **GPU memory usage** of each operation. In the result table, `mem_before_op`, `mem_after_op` represent the memories (counted using `torch.cuda.memory_allocated()`) before and after the operation. `mem_delta` represent the difference between `mem_after_op` and `mem_before_op`. Please note that just run one model each time in a program in order to obtain accurate memory statistics.
+
 
 ## Usage
 ### Installation
 ```
-pip install torch_flops
+pip install torch_flops -i https://pypi.org/simple
 ```
 
 ### Requirements
