@@ -10,6 +10,7 @@ from tabulate import tabulate
 from typing import Any, Tuple, NamedTuple, Optional, Dict, Sequence, Literal
 from copy import deepcopy
 import time
+import csv
 
 from torch_flops.flops_ops import MODULE_FLOPs_MAPPING, METHOD_FLOPs_MAPPING, FUNCTION_FLOPs_MAPPING
 
@@ -125,9 +126,11 @@ class ShapeProp(torch.fx.Interpreter):
 
     """
 
-    def __init__(self, gm: GraphModule, mem_func_name: Literal['memory_allocated', 'max_memory_allocated'] = 'max_memory_allocated', ignore_ops: Sequence[str] = []):
+    def __init__(self, gm: GraphModule, **kwargs):
         super().__init__(gm)
+        mem_func_name: str = kwargs.get('mem_func_name', 'max_memory_allocated')
         assert mem_func_name in ['memory_allocated', 'max_memory_allocated']
+        ignore_ops = kwargs.get('ignore_ops', [])
 
         fake_mode = None
         if fake_mode is not None:
@@ -149,8 +152,8 @@ class ShapeProp(torch.fx.Interpreter):
 
         self.real_module = self.module
         self.ignore_ops = ignore_ops
-        self.device = next(gm.parameters()).device
         self.mem_func_name = mem_func_name
+        self.device = next(gm.parameters()).device
 
     @compatibility(is_backward_compatible=True)
     def call_module(self, target: 'Target', args: Tuple[Argument, ...], kwargs: Dict[str, Any]) -> Any:
@@ -173,14 +176,14 @@ class ShapeProp(torch.fx.Interpreter):
         submod = self.fetch_attr(target)
 
         if self.device.type == 'cuda':
-            torch.cuda.synchronize()
+            torch.cuda.synchronize(self.device)
         t_start = time.time()
 
         # Execute the method and return the result
         result = submod(*args, **kwargs)
 
         if self.device.type == 'cuda':
-            torch.cuda.synchronize()
+            torch.cuda.synchronize(self.device)
         t_end = time.time()
         exec_time = (t_end - t_start) * 1000
 
@@ -213,14 +216,14 @@ class ShapeProp(torch.fx.Interpreter):
         assert not isinstance(target, str)
 
         if self.device.type == 'cuda':
-            torch.cuda.synchronize()
+            torch.cuda.synchronize(self.device)
         t_start = time.time()
 
         # Execute the function and return the result
         result = target(*args, **kwargs)
 
         if self.device.type == 'cuda':
-            torch.cuda.synchronize()
+            torch.cuda.synchronize(self.device)
         t_end = time.time()
         exec_time = (t_end - t_start) * 1000
 
@@ -256,14 +259,14 @@ class ShapeProp(torch.fx.Interpreter):
         assert isinstance(target, str)
 
         if self.device.type == 'cuda':
-            torch.cuda.synchronize()
+            torch.cuda.synchronize(self.device)
         t_start = time.time()
 
         # Execute the method and return the result
         result = getattr(self_obj, target)(*args_tail, **kwargs)
 
         if self.device.type == 'cuda':
-            torch.cuda.synchronize()
+            torch.cuda.synchronize(self.device)
         t_end = time.time()
         exec_time = (t_end - t_start) * 1000
 
@@ -294,26 +297,26 @@ class ShapeProp(torch.fx.Interpreter):
 
                         mem_func = getattr(torch.cuda, self.mem_func_name)
                         if self.mem_func_name == 'max_memory_allocated':
-                            torch.cuda.reset_peak_memory_stats()
-                        m_start = mem_func()
+                            torch.cuda.reset_peak_memory_stats(self.device)
+                        m_start = mem_func(self.device)
 
                         if n.op in ('call_module', 'call_function', 'call_method'):
                             result, flops, exec_time = getattr(self, n.op)(n.target, args, kwargs)
                         else:
                             if self.device.type == 'cuda':
-                                torch.cuda.synchronize()
+                                torch.cuda.synchronize(self.device)
                             t_start = time.time()
 
                             result = getattr(self, n.op)(n.target, args, kwargs)
 
                             if self.device.type == 'cuda':
-                                torch.cuda.synchronize()
+                                torch.cuda.synchronize(self.device)
                             t_end = time.time()
                             exec_time = (t_end - t_start) * 1000
 
                             flops = 0
 
-                        m_end = mem_func()
+                        m_end = mem_func(self.device)
 
                         assert flops not in n.meta, n.meta.keys()
 
@@ -393,19 +396,24 @@ class TorchFLOPsByFX():
         self.ignore_ops = deepcopy(ignore_ops)
 
         self.result_table = []
-        self.result_header = ['node_name', 'node_op', 'op_target', 'module_stack[-1]', 'flops', 'time(ms)', 'mem_before_op(B)', 'mem_after_op(B)', 'mem_delta(B)']
+        self.result_header = ['node_name', 'node_op', 'op_target', 'which_module', 'flops', 'time(ms)', 'mem_before_op(B)', 'mem_after_op(B)', 'mem_delta(B)']
         self.__missing_values = [''] * 4 + ['ERROR']
         self.__flag_propagated = False
 
     def propagate(self, *args):
-        if self.__flag_propagated:
-            raise AssertionError("\033[33mOnly support for propagating once since each node has been recorded.\033[0m")
-        ShapeProp(self.graph_model, self.mem_func_name, self.ignore_ops).propagate(*args)
+        ShapeProp(self.graph_model, mem_func_name=self.mem_func_name, ignore_ops=self.ignore_ops).propagate(*args)
 
         result_table = []
         for node in self.graph_model.graph.nodes:
             node: Node
-            _result_row = [node.name, node.op, str(node.target)]
+
+            _target_str = str(node.target)
+            if (_pattern := ' at 0x') in _target_str:
+                _target_str = f"{_target_str.split(_pattern)[0]}>"
+            if (_pattern := ' of type object') in _target_str:
+                _target_str = f"{_target_str.split(_pattern)[0]}>"
+
+            _result_row = [node.name, node.op, _target_str]
 
             node_module_name = ''
             if (_var_name := 'nn_module_stack') in node.meta:
@@ -494,3 +502,10 @@ class TorchFLOPsByFX():
             print(f"max_memory = {max_mem:3,} Bytes")
 
         return max_mem
+
+    def save_result_to_csv(self, file_path:str, mode:str='a'):
+        with open(file_path, mode) as f:
+            writer = csv.writer(f)
+            writer.writerow(self.result_header)
+            writer.writerows(self.result_table)
+            f.write('\n')

@@ -1,3 +1,5 @@
+import os
+os.environ['TIMM_FUSED_ATTN'] = "0"
 import torch
 from torch import Tensor
 import torch.nn as nn
@@ -158,3 +160,4 @@ if __name__ == "__main__":
     total_flops = flops_counter.print_total_flops()
     total_time = flops_counter.print_total_time()
     max_memory = flops_counter.print_max_memory()
+    flops_counter.save_result_to_csv("./result.csv", 'w')

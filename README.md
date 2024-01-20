@@ -7,7 +7,7 @@ This is a library for calculating FLOPs of pytorch models. Compared with other  
 
 **Update Note**: Introducing support for displaying the **execution time** of each operation. Please use `flops_counter.print_result_table()` to see the detailed results.
 
-**Update Note**: Introducing support for displaying the **GPU memory usage** of each operation. In the result table, `mem_before_op`, `mem_after_op` represent the memories (counted using `torch.cuda.memory_allocated()` or `torch.cuda.max_memory_allocated()`) before and after the operation. `mem_delta` represent the difference between `mem_after_op` and `mem_before_op`. Please note that just run one model each time in a program in order to obtain accurate memory statistics.
+**Update Note**: Introducing support for displaying the **GPU memory usage** of each operation. In the result table, `mem_before_op`, `mem_after_op` represent the memories (counted using `torch.cuda.max_memory_allocated()` `(default)` or `torch.cuda.memory_allocated()`) before and after the operation. `mem_delta` represent the difference between `mem_after_op` and `mem_before_op`. Please note that just run one model each time in a program in order to obtain accurate memory statistics.
 
 
 ## Usage
@@ -33,8 +33,8 @@ An expamle for calculating the FLOPs of ViT-base16 and ResNet-50 is given in [`e
     flops_counter = TorchFLOPsByFX(model)
     # Feed the input tensor to the model
     flops_counter.propagate(x)
-    # Print the full resut table, which contains the detailed result of each operation.
-    flops_counter.print_result_table()
+    # Print the full result table. It also returns the detailed result of each operation in a 2D list.
+    result_table = flops_counter.print_result_table()
     # Print FLOPs, execution time and max GPU memory.
     total_flops = flops_counter.print_total_flops(show=True)
     total_time = flops_counter.print_total_time()
