@@ -7,7 +7,7 @@ from torch.fx._compatibility import compatibility
 from torch.fx.graph_module import GraphModule
 import traceback
 from tabulate import tabulate
-from typing import Any, Tuple, NamedTuple, Optional, Dict, Sequence
+from typing import Any, Tuple, NamedTuple, Optional, Dict, Sequence, Literal
 from copy import deepcopy
 import time
 
@@ -125,8 +125,10 @@ class ShapeProp(torch.fx.Interpreter):
 
     """
 
-    def __init__(self, gm: GraphModule, ignore_ops: Sequence[str] = []):
+    def __init__(self, gm: GraphModule, mem_func_name: Literal['memory_allocated', 'max_memory_allocated'] = 'max_memory_allocated', ignore_ops: Sequence[str] = []):
         super().__init__(gm)
+        assert mem_func_name in ['memory_allocated', 'max_memory_allocated']
+
         fake_mode = None
         if fake_mode is not None:
             from torch._dynamo.utils import deepcopy_to_fake_tensor
@@ -148,6 +150,7 @@ class ShapeProp(torch.fx.Interpreter):
         self.real_module = self.module
         self.ignore_ops = ignore_ops
         self.device = next(gm.parameters()).device
+        self.mem_func_name = mem_func_name
 
     @compatibility(is_backward_compatible=True)
     def call_module(self, target: 'Target', args: Tuple[Argument, ...], kwargs: Dict[str, Any]) -> Any:
@@ -289,7 +292,9 @@ class ShapeProp(torch.fx.Interpreter):
                         assert isinstance(args, tuple)
                         assert isinstance(kwargs, dict)
 
-                        mem_func = torch.cuda.memory_allocated
+                        mem_func = getattr(torch.cuda, self.mem_func_name)
+                        if self.mem_func_name == 'max_memory_allocated':
+                            torch.cuda.reset_peak_memory_stats()
                         m_start = mem_func()
 
                         if n.op in ('call_module', 'call_function', 'call_method'):
@@ -364,7 +369,12 @@ class ShapeProp(torch.fx.Interpreter):
 
 
 class TorchFLOPsByFX():
-    def __init__(self, model: nn.Module, ignore_ops: Sequence[str] = []):
+    def __init__(self, model: nn.Module, mem_func_name: Literal['memory_allocated', 'max_memory_allocated'] = 'max_memory_allocated', ignore_ops: Sequence[str] = []):
+        '''
+        model: the model.
+        mem_func_name: which function to measure the GPU memory; choosed from 'memory_allocated' and 'max_memory_allocated'; default: 'max_memory_allocated'.
+        ignore_ops: the operations to be ignored for counting FLOPs.
+        '''
         model.eval()
         try:
             self.graph_model: GraphModule = symbolic_trace(model)
@@ -376,16 +386,21 @@ class TorchFLOPsByFX():
             print("\033[33mNOTE: The model cannot be built as a graph model by 'symbolic_trace()'. Please replace the `tensor.shape[i]` that servers as the parameter of a function with a pre-defined deterministic value.\033[0m")
             raise e
 
+        assert mem_func_name in ['memory_allocated', 'max_memory_allocated']
+        self.mem_func_name = mem_func_name
         if isinstance(ignore_ops, str):
             ignore_ops = [ignore_ops]
         self.ignore_ops = deepcopy(ignore_ops)
 
         self.result_table = []
-        self.result_header = ['node_name', 'node_op', 'op_target', 'nn_module_stack[-1]', 'flops', 'time(ms)', 'mem_before_op(B)', 'mem_after_op(B)', 'mem_delta(B)']
+        self.result_header = ['node_name', 'node_op', 'op_target', 'module_stack[-1]', 'flops', 'time(ms)', 'mem_before_op(B)', 'mem_after_op(B)', 'mem_delta(B)']
         self.__missing_values = [''] * 4 + ['ERROR']
+        self.__flag_propagated = False
 
     def propagate(self, *args):
-        ShapeProp(self.graph_model, self.ignore_ops).propagate(*args)
+        if self.__flag_propagated:
+            raise AssertionError("\033[33mOnly support for propagating once since each node has been recorded.\033[0m")
+        ShapeProp(self.graph_model, self.mem_func_name, self.ignore_ops).propagate(*args)
 
         result_table = []
         for node in self.graph_model.graph.nodes:
@@ -417,18 +432,23 @@ class TorchFLOPsByFX():
             result_table.append(_result_row)
 
         self.result_table = result_table
+        self.__flag_propagated = True
 
-    def print_result_table(self, show: bool = True):
+    def print_result_table(self, show: bool = True) -> list[list[str | int | float]]:
+        '''
+        Print the full result table.
+        return: the results in a 2D list (excluding the head of the table).
+        '''
         table_str = tabulate(self.result_table, self.result_header, tablefmt='rst',
                              intfmt=[''] * 4 + [','] + [''] + [','] * 2 + ['+,'],
                              floatfmt='.3f',
                              missingval=self.__missing_values)
         if show:
             print(table_str)
-        return table_str
+        return self.result_table
 
     def print_total_flops(self, show: bool = True) -> int:
-        if len(self.result_table) == 0:
+        if not self.__flag_propagated:
             raise RuntimeError(f"Use `propagate()` method first.")
 
         valid_flops_list = list(filter(lambda _f: isinstance(_f, int), list(zip(*self.result_table))[4]))
@@ -450,3 +470,27 @@ class TorchFLOPsByFX():
             exit(-1)
         """
         return total_flops
+
+    def print_total_time(self, show: bool = True) -> float:
+        if not self.__flag_propagated:
+            raise RuntimeError(f"Use `propagate()` method first.")
+
+        valid_time_list = list(zip(*self.result_table))[5]
+        total_time = sum(valid_time_list)
+
+        if show:
+            print(f"total_time = {total_time:.3f} ms")
+
+        return total_time
+
+    def print_max_memory(self, show=True) -> int:
+        if not self.__flag_propagated:
+            raise RuntimeError(f"Use `propagate()` method first.")
+
+        valid_mem_list = list(zip(*self.result_table))[7]
+        max_mem = max(valid_mem_list)
+
+        if show:
+            print(f"max_memory = {max_mem:3,} Bytes")
+
+        return max_mem

@@ -7,7 +7,7 @@ This is a library for calculating FLOPs of pytorch models. Compared with other  
 
 **Update Note**: Introducing support for displaying the **execution time** of each operation. Please use `flops_counter.print_result_table()` to see the detailed results.
 
-**Update Note**: Introducing support for displaying the **GPU memory usage** of each operation. In the result table, `mem_before_op`, `mem_after_op` represent the memories (counted using `torch.cuda.memory_allocated()`) before and after the operation. `mem_delta` represent the difference between `mem_after_op` and `mem_before_op`. Please note that just run one model each time in a program in order to obtain accurate memory statistics.
+**Update Note**: Introducing support for displaying the **GPU memory usage** of each operation. In the result table, `mem_before_op`, `mem_after_op` represent the memories (counted using `torch.cuda.memory_allocated()` or `torch.cuda.max_memory_allocated()`) before and after the operation. `mem_delta` represent the difference between `mem_after_op` and `mem_before_op`. Please note that just run one model each time in a program in order to obtain accurate memory statistics.
 
 
 ## Usage
@@ -25,50 +25,74 @@ pip install torch_flops -i https://pypi.org/simple
 ### Example 1
 An expamle for calculating the FLOPs of ViT-base16 and ResNet-50 is given in [`example1.py`](example1.py). The example requires the [`timm`](https://github.com/huggingface/pytorch-image-models) library. You can calculate the FLOPs in three lines:
 ```python
-    flops_counter = TorchFLOPsByFX(resnet)
+    # NOTE: First run the model once for accurate time measurement in the following process.
+    # The input `x` and the model should be placed on GPU for memory measurement.
+    with torch.no_grad():
+        model(x)
+    # Initialize the `TorchFLOPsByFX`. Please read the doc of the class for initialization options.
+    flops_counter = TorchFLOPsByFX(model)
+    # Feed the input tensor to the model
     flops_counter.propagate(x)
+    # Print the full resut table, which contains the detailed result of each operation.
+    flops_counter.print_result_table()
+    # Print FLOPs, execution time and max GPU memory.
     total_flops = flops_counter.print_total_flops(show=True)
+    total_time = flops_counter.print_total_time()
+    max_memory = flops_counter.print_max_memory()
 ```
 The output of `example1.py` is:
 ```
 ========== vit_base16 ==========
 total_flops = 35,164,979,282 
+total_time = 14.015 ms
+max_memory = 362,289,152 Bytes
 ========== resnet50 ==========
-total_flops = 8,227,340,288
+total_flops = 8,227,340,288 
+total_time = 10.867 ms
+max_memory = 249,894,400 Bytes
 ```
-![image](./src/screen_shot.png)
+![image](./screen_shot.png)
 
 ### Example 2
 Another example of calculating the FLOPs for an attention block is provided in [`example2.py`](example2.py). However, You can define a simple model to check the result (see [`compare.py`](compare.py)).
 
 ```python
-C = 768
+    C = 768
+    device = 'cuda:0'
 
-# Define the model: an attention block (refer to "timm": https://github.com/huggingface/pytorch-image-models/blob/main/timm/models/vision_transformer.py)
-block = Block(C, num_heads=2, qkv_bias=True)
-block.attn.fused_attn = False
-block.eval()
-model = block
+    # Define the model: an attention block (refer to "timm": https://github.com/huggingface/pytorch-image-models/blob/main/timm/models/vision_transformer.py)
+    block = Block(C, num_heads=2, qkv_bias=True)
+    block.attn.fused_attn = False
+    block.eval()
+    model = block
 
-# Input
-# N: number of tokens
-N = 14**2 + 1
-B = 1
-x = torch.randn([B, N, C])
+    # Input
+    # N: number of tokens
+    N = 14**2 + 1
+    B = 1
+    x = torch.randn([B, N, C]).to(device)
+    model.to(device)
 
-# Output
-# Build the graph of the model. You can specify the operations (listed in `MODULE_FLOPs_MAPPING`, `FUNCTION_FLOPs_MAPPING` and `METHOD_FLOPs_MAPPING` in 'flops_ops.py') to ignore.
-flops_counter = TorchFLOPsByFX(model)
-# Print the grath (not essential)
-print('*' * 120)
-flops_counter.graph_model.graph.print_tabular()
-# Feed the input tensor
-flops_counter.propagate(x)
-# Print the FLOPs of each node in the graph. Note that if there are unsupported operations, the "flops" of these ops will be marked as 'not recognized'.
-print('*' * 120)
-flops_counter.print_result_table()
-# Print the total FLOPs
-total_flops = flops_counter.print_total_flops()
+    # NOTE: First run the model once for accurate time measurement in the following process.
+    with torch.no_grad():
+        model(x)
+
+    # Output
+    # Build the graph of the model. You can specify the operations (listed in `MODULE_FLOPs_MAPPING`, `FUNCTION_FLOPs_MAPPING` and `METHOD_FLOPs_MAPPING` in 'flops_ops.py') to ignore.
+    flops_counter = TorchFLOPsByFX(model)
+    # Print the grath (not essential)
+    print('*' * 120)
+    flops_counter.graph_model.graph.print_tabular()
+    # Feed the input tensor
+    with torch.no_grad():
+        flops_counter.propagate(x)
+    # Print the flops of each node in the graph. Note that if there are unsupported operations, the "flops" of these ops will be marked as 'not recognized'.
+    print('*' * 120)
+    result_table = flops_counter.print_result_table()
+    # Print the total FLOPs
+    total_flops = flops_counter.print_total_flops()
+    total_time = flops_counter.print_total_time()
+    max_memory = flops_counter.print_max_memory()
 ```
 You can also feed more than one sequential arguments for the model in `propagate()` if the `model.forward()` function need not only one arguments.
 

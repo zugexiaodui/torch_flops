@@ -115,6 +115,7 @@ class Block(nn.Module):
 
     @torch.no_grad()
     def forward(self, x):
+        x += 1
         x = x + self.drop_path1(self.ls1(self.attn(self.norm1(x))))
         x = x + self.drop_path2(self.ls2(self.mlp(self.norm2(x))))
         return x
@@ -135,10 +136,15 @@ if __name__ == "__main__":
     N = 14**2 + 1
     B = 1
     x = torch.randn([B, N, C]).to(device)
+    model.to(device)
+
+    # NOTE: First run the model once for accurate time measurement in the following process.
+    with torch.no_grad():
+        model(x)
 
     # Output
     # Build the graph of the model. You can specify the operations (listed in `MODULE_FLOPs_MAPPING`, `FUNCTION_FLOPs_MAPPING` and `METHOD_FLOPs_MAPPING` in 'flops_ops.py') to ignore.
-    flops_counter = TorchFLOPsByFX(model.to(device))
+    flops_counter = TorchFLOPsByFX(model)
     # Print the grath (not essential)
     print('*' * 120)
     flops_counter.graph_model.graph.print_tabular()
@@ -147,6 +153,8 @@ if __name__ == "__main__":
         flops_counter.propagate(x)
     # Print the flops of each node in the graph. Note that if there are unsupported operations, the "flops" of these ops will be marked as 'not recognized'.
     print('*' * 120)
-    flops_counter.print_result_table()
+    result_table = flops_counter.print_result_table()
     # Print the total FLOPs
     total_flops = flops_counter.print_total_flops()
+    total_time = flops_counter.print_total_time()
+    max_memory = flops_counter.print_max_memory()
