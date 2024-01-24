@@ -21,7 +21,7 @@ def flops_matmul(tensor1_shape: Size, tensor2_shape: Size, result_shape: Size) -
     assert reduce_dim_shape == get_reduce_dim_shape(tensor2_shape, False)
     return (2 * reduce_dim_shape - 1) * result_shape.numel()
 
-
+# For nn.modules.*
 def flops_convnd(module: nn.modules.conv._ConvNd, input_shape: Size, result_shape: Size) -> int:
     kernel_size = Size([__k]) if isinstance(__k := module.kernel_size, int) else Size(__k)
     return (2 * kernel_size.numel() * module.in_channels - int(module.bias is None) * module.groups) * result_shape.numel()
@@ -53,6 +53,12 @@ def flops_adaptive_maxpoolnd(module: nn.modules.pooling._AdaptiveMaxPoolNd, inpu
     return (kernel_size.numel() - 1) * result_shape.numel()
 
 
+def flops_functional_convnd(bias: int, groups: int, kernel_size: Size, in_channels: int, result_shape: Size) -> int:
+    total_flops = (2 * kernel_size.numel() * in_channels - int(bias is None) * groups) * result_shape.numel()
+    return total_flops
+
+
+# For ModuleFLOPs
 def ModuleFLOPs_zero(module: nn.Linear, result: Tensor, *args, **kwargs) -> int:
     return flops_zero()
 
@@ -68,6 +74,10 @@ def ModuleFLOPs_elemwise(module: nn.Module, result: Tensor, *args, **kwargs) -> 
 
     total_flops = flops_elemwise(result_shape)
     return total_flops
+
+
+def ModuleFLOPs_LeakyReLU(module: nn.LeakyReLU, result: Tensor, *args, **kwargs) -> int:
+    return result.numel() * 4
 
 
 def ModuleFLOPs_Linear(module: nn.Linear, result: Tensor, *args, **kwargs) -> int:
@@ -184,6 +194,7 @@ def ModuleFLOPs_GELU(module: nn.GELU, result: Tensor, *args, **kwargs) -> int:
     return total_flops
 
 
+# For FunctionFLOPs
 def FunctionFLOPs_zero(result: Tensor, *args, **kwargs) -> int:
     return flops_zero()
 
@@ -212,16 +223,88 @@ def FunctionFLOPs_matmul(result: Tensor, *args, **kwargs) -> int:
 
 
 def FunctionFLOPs_linear(result: Tensor, *args, **kwargs) -> int:
-    assert len(args) == 3, len(args)
-    input, weight, bias = args
+    if len(args) == 3:
+        input, weight, bias = args
+    elif len(args) == 2:
+        input, weight = args
+        bias = kwargs.get('bias')
+    else:
+        input = args[0]
+        weight = kwargs.get('weight')
+        bias = kwargs.get('bias')
+
     assert isinstance(input, Tensor) and isinstance(weight, Tensor)
 
     total_flops = flops_matmul(input.shape, weight.T.shape, result.shape)
     if bias is not None:
         total_flops += flops_elemwise(result.shape)
-    return total_flops
+    return total_flops 
 
 
+def FunctionFLOPs_convnd(result: Tensor, *args, **kwargs) -> int:
+    
+    input = args[0]
+    if len(args) > 1:
+        weight = args[1]
+    else:
+        weight = kwargs.get('weight')
+
+    assert isinstance(input, Tensor)
+    assert isinstance(weight, Tensor)
+
+    kernel_size = weight.shape[2:]
+    in_channels = weight.shape[1]
+    bias = kwargs.get('bias')
+    groups = kwargs.get('groups', None)
+    if groups is None:
+        groups = 1
+    stride = kwargs.get('stride', None)
+    if stride is None:
+        stride = 1
+    padding = kwargs.get('padding', None)
+    if padding is None:
+        padding = 0
+    result_shape = result.shape
+
+    return flops_functional_convnd(bias, groups, kernel_size, in_channels, result_shape)
+
+def FunctionFLOPs_leaky_relu(result: Tensor, *args, **kwargs) -> int:
+    return result.numel() * 4
+
+def FunctionFLOPs_interpolate(result: Tensor, *args, **kwargs) -> int:
+    input = args[0]
+    if len(args) > 1:
+        size = args[1]
+    else:
+        size = kwargs.get('size', None)
+
+    if size is not None:
+        if isinstance(size, tuple) or isinstance(size, list):
+            prod = 1
+            for s in size:
+                prod *= s
+            return int(prod)
+        else:
+            return int(size)
+    
+    if len(args) > 2:
+        scale_factor = args[2]
+    else:
+        scale_factor = kwargs.get('scale_factor', None)
+
+    flops = input.numel()
+    if isinstance(scale_factor, tuple) and len(scale_factor) == len(input):
+        prod = 1
+        for s in scale_factor:
+            prod *= s
+        flops *= int(prod)
+    else:
+        flops *= scale_factor**len(input)
+
+    return flops
+
+
+# For MethodFLOPs
 def MethodFLOPs_zero(self_obj: Tensor, result: Tensor, *args_tail, **kwargs) -> int:
     return flops_zero()
 
@@ -264,6 +347,7 @@ def MethodFLOPs_softmax(self_obj: Tensor, result: Tensor, *args_tail, **kwargs) 
 
     total_flops = exp_flops + sum_flops + div_flops
     return total_flops
+    
 
 
 MODULE_FLOPs_MAPPING = {
@@ -296,6 +380,8 @@ MODULE_FLOPs_MAPPING = {
     'GELU': ModuleFLOPs_GELU,
     'ReLU': ModuleFLOPs_elemwise,
     'Flatten': ModuleFLOPs_zero,
+    'LeakyReLU': ModuleFLOPs_LeakyReLU,
+    'type_as': ModuleFLOPs_zero
 }
 FUNCTION_FLOPs_MAPPING = {
     'getattr': FunctionFLOPs_zero,
@@ -310,6 +396,14 @@ FUNCTION_FLOPs_MAPPING = {
     'eq': FunctionFLOPs_elemwise,
     'cat': FunctionFLOPs_zero,
     'linear': FunctionFLOPs_linear,
+    'conv1d': FunctionFLOPs_convnd,
+    'conv2d': FunctionFLOPs_convnd,
+    'conv3d': FunctionFLOPs_convnd,
+    'leaky_relu': FunctionFLOPs_leaky_relu,
+    'pad': FunctionFLOPs_zero,
+    'floordiv': FunctionFLOPs_zero,
+    'flip': FunctionFLOPs_zero,
+    'interpolate': FunctionFLOPs_interpolate,
 }
 METHOD_FLOPs_MAPPING = {
     'reshape': MethodFLOPs_zero,
@@ -324,4 +418,13 @@ METHOD_FLOPs_MAPPING = {
     'softmax': MethodFLOPs_softmax,
     'expand': MethodFLOPs_zero,
     'flatten': MethodFLOPs_zero,
+    'view': MethodFLOPs_zero,
+    'cuda': MethodFLOPs_zero,
+    'flip': MethodFLOPs_zero,
+    'type_as': MethodFLOPs_zero,
+    'size': MethodFLOPs_zero,
+    'clone': MethodFLOPs_zero,
+    'new_empty': MethodFLOPs_zero,
+    'normal_': MethodFLOPs_zero,
+    'pow': MethodFLOPs_zero,
 }
