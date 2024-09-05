@@ -24,7 +24,13 @@ def flops_matmul(tensor1_shape: Size, tensor2_shape: Size, result_shape: Size) -
 # For nn.modules.*
 def flops_convnd(module: nn.modules.conv._ConvNd, input_shape: Size, result_shape: Size) -> int:
     kernel_size = Size([__k]) if isinstance(__k := module.kernel_size, int) else Size(__k)
-    return (2 * kernel_size.numel() * module.in_channels - int(module.bias is None) * module.groups) * result_shape.numel()
+    window_flops_per_chan = 2 * kernel_size.numel() - 1
+    effective_in_chan = module.in_channels // module.groups
+    window_flops = effective_in_chan * window_flops_per_chan + (effective_in_chan - 1)
+    conv_flops = result_shape.numel() * window_flops
+    bias_flops = result_shape.numel() if module.bias is not None else 0
+    return conv_flops + bias_flops
+    # return (2 * kernel_size.numel() * module.in_channels // module.groups - int(module.bias is None)) * result_shape.numel()
 
 
 def flops_avgpoolnd(module: nn.modules.pooling._AvgPoolNd, input_shape: Size, result_shape: Size) -> int:

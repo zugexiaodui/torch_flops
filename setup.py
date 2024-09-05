@@ -16,7 +16,7 @@ setup(
     long_description_content_type='text/markdown',
     url="https://github.com/zugexiaodui/torch_flops",
     data_files=[readme_path],
-    requires=["python(>=3.10)", "torch(>=1.8)", "tabulate"],
+    requires=["python(>=3.10)", "torch(>=2.0)", "tabulate"],
     # install_requires=["torch>=1.8", "tabulate"],
     # python_requires=">=3.10",
     license=open("./LICENCE", encoding='utf-8').read()
