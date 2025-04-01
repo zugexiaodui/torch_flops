@@ -28,8 +28,8 @@ class SimpleModel(nn.Module):
 
 
 if __name__ == "__main__":
-    model = SimpleModel(inp_args)
-    x = torch.randn(1, 5)
+    model = SimpleModel(inp_args).cuda()
+    x = torch.randn(1, 5).cuda()
     y = model(x)
     print("*" * 40 + " Model " + "*" * 40)
     print(model)
