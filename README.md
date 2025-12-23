@@ -54,7 +54,7 @@ max_memory = 249,894,400 Bytes
 ![image](./screen_shot.png)
 
 ### Example 2
-Another example of calculating the FLOPs for an attention block is provided in [`example2.py`](example2.py). However, You can define a simple model to check the result (see [`compare.py`](compare.py)).
+Another example of calculating the FLOPs for an attention block is provided in [`example2.py`](example2.py). However, You can define a simple model to check the result (see [`compare1.py`](compare1.py)).
 
 ```python
     C = 768
@@ -99,10 +99,10 @@ You can also feed more than one sequential arguments for the model in `propagate
 # Advantage
 `torch_flops` can capture all the operations excuted in the forward including the operations not wrapped by `nn.Module`, like `torch.matmul`, `@`, `+` and `tensor.exp`, and it can ignore the FLOPs of the modules not used in the forward process.
 
-There is a comparison of `torch_flops` (this repo), `torchanalyse`, `thop` and `ptflops` in the script [`compare.py`](compare.py).
+There is a comparison of `torch_flops` (this repo), `torchanalyse`, `thop` and `ptflops` in the script [`compare1.py`](compare1.py).
 The output of
 
-`python compare.py`:
+`python compare1.py`:
 
 ```
 **************************************** Model ****************************************
@@ -141,7 +141,7 @@ ptflops: 24 MACs
 Now let's add an operation `x += 1.` in `forward()`.
 The output of
 
-`python compare.py --add_one`:
+`python compare1.py --add_one`:
 
 ```
 **************************************** Model ****************************************
@@ -180,7 +180,7 @@ ptflops: 24 MACs
 
 **It can be seen that only `torch_flops` can capture the FLOPs of `x+=1`!**
 
-`torchinfo` is not compared here but it does not have this ability. We also find that some of the other libraries cannot calculate the FLOPs of the `bias` item in `nn.Linear` using `python compare.py --linear_no_bias`.
+`torchinfo` is not compared here but it does not have this ability. We also find that some of the other libraries cannot calculate the FLOPs of the `bias` item in `nn.Linear` using `python compare1.py --linear_no_bias`.
 
 
 # Supported Operations
@@ -218,6 +218,8 @@ MODULE_FLOPs_MAPPING = {
     'GELU': ModuleFLOPs_GELU,
     'ReLU': ModuleFLOPs_elemwise,
     'Flatten': ModuleFLOPs_zero,
+    'LeakyReLU': ModuleFLOPs_LeakyReLU,
+    'type_as': ModuleFLOPs_zero
 }
 FUNCTION_FLOPs_MAPPING = {
     'getattr': FunctionFLOPs_zero,
@@ -232,6 +234,15 @@ FUNCTION_FLOPs_MAPPING = {
     'eq': FunctionFLOPs_elemwise,
     'cat': FunctionFLOPs_zero,
     'linear': FunctionFLOPs_linear,
+    'conv1d': FunctionFLOPs_convnd,
+    'conv2d': FunctionFLOPs_convnd,
+    'conv3d': FunctionFLOPs_convnd,
+    'leaky_relu': FunctionFLOPs_leaky_relu,
+    'pad': FunctionFLOPs_zero,
+    'floordiv': FunctionFLOPs_zero,
+    'flip': FunctionFLOPs_zero,
+    'interpolate': FunctionFLOPs_interpolate,
+    'scaled_dot_product_attention': FunctionFLOPs_scaled_dot_product_attention,
 }
 METHOD_FLOPs_MAPPING = {
     'reshape': MethodFLOPs_zero,
@@ -246,6 +257,15 @@ METHOD_FLOPs_MAPPING = {
     'softmax': MethodFLOPs_softmax,
     'expand': MethodFLOPs_zero,
     'flatten': MethodFLOPs_zero,
+    'view': MethodFLOPs_zero,
+    'cuda': MethodFLOPs_zero,
+    'flip': MethodFLOPs_zero,
+    'type_as': MethodFLOPs_zero,
+    'size': MethodFLOPs_zero,
+    'clone': MethodFLOPs_zero,
+    'new_empty': MethodFLOPs_zero,
+    'normal_': MethodFLOPs_zero,
+    'pow': MethodFLOPs_zero,
 }
 ```
 However, not all the operations in pytorch have been considered since it spends a lot of effort. If you need to add support for a certain operation, please raise an issue. You are also welcome to add more features to this repository.

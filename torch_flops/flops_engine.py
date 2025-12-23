@@ -7,7 +7,7 @@ from torch.fx._compatibility import compatibility
 from torch.fx.graph_module import GraphModule
 import traceback
 from tabulate import tabulate
-from typing import Any, Tuple, NamedTuple, Optional, Dict, Sequence, Literal
+from typing import Any, Tuple, NamedTuple, Optional, Dict, Sequence, Literal, List, Union
 from copy import deepcopy
 import time
 import csv
@@ -417,7 +417,11 @@ class TorchFLOPsByFX():
 
             node_module_name = ''
             if (_var_name := 'nn_module_stack') in node.meta:
-                node_module_name = next(reversed(node.meta[_var_name].values()))[1].__name__
+                _modu = next(reversed(node.meta[_var_name].values()))
+                if type(_modu) is tuple:
+                    node_module_name = _modu[1].__name__
+                else:
+                    node_module_name = _modu.__name__
                 # node_module_name = ".".join([_v.__name__ for _v in node.meta[_var_name].values()])
             _result_row.append(node_module_name)
 
@@ -442,7 +446,7 @@ class TorchFLOPsByFX():
         self.result_table = result_table
         self.__flag_propagated = True
 
-    def print_result_table(self, show: bool = True) -> list[list[str | int | float]]:
+    def print_result_table(self, show: bool = True) -> List[List[Union[str, int, float]]]:
         '''
         Print the full result table.
         return: the results in a 2D list (excluding the head of the table).
@@ -503,7 +507,7 @@ class TorchFLOPsByFX():
 
         return max_mem
 
-    def save_result_to_csv(self, file_path:str, mode:str='a'):
+    def save_result_to_csv(self, file_path: str, mode: str = 'a'):
         with open(file_path, mode) as f:
             writer = csv.writer(f)
             writer.writerow(self.result_header)

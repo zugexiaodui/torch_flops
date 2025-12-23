@@ -1,5 +1,6 @@
 from torch import nn, Tensor, Size
 from torch.types import Number
+from typing import Union
 
 __all__ = ['MODULE_FLOPs_MAPPING', 'FUNCTION_FLOPs_MAPPING', 'METHOD_FLOPs_MAPPING']
 
@@ -106,7 +107,7 @@ def ModuleFLOPs_Linear(module: nn.Linear, result: Tensor, *args, **kwargs) -> in
     return total_flops
 
 
-def ModuleFLOPs_ConvNd(module: nn.Conv1d | nn.Conv2d | nn.Conv3d, result: Tensor, *args, **kwargs) -> int:
+def ModuleFLOPs_ConvNd(module: Union[nn.Conv1d, nn.Conv2d, nn.Conv3d], result: Tensor, *args, **kwargs) -> int:
     assert len(args) == 1
     assert isinstance(args[0], Tensor)
     assert isinstance(result, Tensor)
@@ -118,7 +119,7 @@ def ModuleFLOPs_ConvNd(module: nn.Conv1d | nn.Conv2d | nn.Conv3d, result: Tensor
     return total_flops
 
 
-def ModuleFLOPs_AvgPoolNd(module: nn.AvgPool1d | nn.AvgPool2d | nn.AvgPool3d, result: Tensor, *args, **kwargs) -> int:
+def ModuleFLOPs_AvgPoolNd(module: Union[nn.AvgPool1d, nn.AvgPool2d, nn.AvgPool3d], result: Tensor, *args, **kwargs) -> int:
     assert len(args) == 1
     assert isinstance(args[0], Tensor)
     assert isinstance(result, Tensor)
@@ -130,7 +131,7 @@ def ModuleFLOPs_AvgPoolNd(module: nn.AvgPool1d | nn.AvgPool2d | nn.AvgPool3d, re
     return total_flops
 
 
-def ModuleFLOPs_AdaptiveAvgPoolNd(module: nn.AdaptiveAvgPool1d | nn.AdaptiveAvgPool2d | nn.AdaptiveAvgPool3d, result: Tensor, *args, **kwargs) -> int:
+def ModuleFLOPs_AdaptiveAvgPoolNd(module: Union[nn.AdaptiveAvgPool1d, nn.AdaptiveAvgPool2d, nn.AdaptiveAvgPool3d], result: Tensor, *args, **kwargs) -> int:
     assert len(args) == 1
     assert isinstance(args[0], Tensor)
     assert isinstance(result, Tensor)
@@ -142,7 +143,7 @@ def ModuleFLOPs_AdaptiveAvgPoolNd(module: nn.AdaptiveAvgPool1d | nn.AdaptiveAvgP
     return total_flops
 
 
-def ModuleFLOPs_MaxPoolNd(module: nn.MaxPool1d | nn.MaxPool2d | nn.MaxPool3d, result: Tensor, *args, **kwargs) -> int:
+def ModuleFLOPs_MaxPoolNd(module: Union[nn.MaxPool1d, nn.MaxPool2d, nn.MaxPool3d], result: Tensor, *args, **kwargs) -> int:
     assert len(args) == 1
     assert isinstance(args[0], Tensor)
     assert isinstance(result, Tensor)
@@ -154,7 +155,7 @@ def ModuleFLOPs_MaxPoolNd(module: nn.MaxPool1d | nn.MaxPool2d | nn.MaxPool3d, re
     return total_flops
 
 
-def ModuleFLOPs_AdaptiveMaxPoolNd(module: nn.AdaptiveMaxPool1d | nn.AdaptiveMaxPool2d | nn.AdaptiveMaxPool3d, result: Tensor, *args, **kwargs) -> int:
+def ModuleFLOPs_AdaptiveMaxPoolNd(module: Union[nn.AdaptiveMaxPool1d, nn.AdaptiveMaxPool2d, nn.AdaptiveMaxPool3d], result: Tensor, *args, **kwargs) -> int:
     assert len(args) == 1
     assert isinstance(args[0], Tensor)
     assert isinstance(result, Tensor)
@@ -166,7 +167,7 @@ def ModuleFLOPs_AdaptiveMaxPoolNd(module: nn.AdaptiveMaxPool1d | nn.AdaptiveMaxP
     return total_flops
 
 
-def ModuleFLOPs_Norm(module: nn.modules.batchnorm._NormBase | nn.LayerNorm | nn.GroupNorm, result: Tensor, *args, **kwargs) -> int:
+def ModuleFLOPs_Norm(module: Union[nn.modules.batchnorm._NormBase, nn.LayerNorm, nn.GroupNorm], result: Tensor, *args, **kwargs) -> int:
     assert len(args) == 1
     assert isinstance(args[0], Tensor)
     assert isinstance(result, Tensor)
@@ -205,7 +206,7 @@ def FunctionFLOPs_zero(result: Tensor, *args, **kwargs) -> int:
     return flops_zero()
 
 
-def FunctionFLOPs_elemwise(result: Tensor | Number, *args, **kwargs) -> int:
+def FunctionFLOPs_elemwise(result: Union[Tensor, Number], *args, **kwargs) -> int:
     assert len(args) == 2, len(args)
 
     total_flops = None
@@ -310,6 +311,39 @@ def FunctionFLOPs_interpolate(result: Tensor, *args, **kwargs) -> int:
     return flops
 
 
+def FunctionFLOPs_scaled_dot_product_attention(result: Tensor, *args, **kwargs) -> int:
+    assert len(args) >= 3, len(args)
+    q, k, v = args[:3]
+    assert isinstance(q, Tensor) and isinstance(k, Tensor) and isinstance(v, Tensor)
+
+    q_shape, k_shape, v_shape = q.shape, k.shape, v.shape
+    batch_heads = 1
+    for dim in q_shape[:-2]:
+        batch_heads *= dim
+    Lq, d = q_shape[-2], q_shape[-1]
+    Lk = k_shape[-2]
+    dv = v_shape[-1]
+
+    flops_qk = (2 * d - 1) * batch_heads * Lq * Lk
+    flops_scale = batch_heads * Lq * Lk
+
+    attn_mask = args[3] if len(args) > 3 else kwargs.get('attn_mask')
+    is_causal = args[5] if len(args) > 5 else kwargs.get('is_causal', False)
+    flops_mask = batch_heads * Lq * Lk if (attn_mask is not None or is_causal) else 0
+
+    flops_softmax = batch_heads * Lq * Lk  # exp
+    flops_softmax += batch_heads * Lq * (Lk - 1)  # sum
+    flops_softmax += batch_heads * Lq * Lk  # div
+
+    dropout_p = args[4] if len(args) > 4 else kwargs.get('dropout_p', 0.0)
+    flops_dropout = batch_heads * Lq * Lk if (dropout_p and dropout_p > 0) else 0
+
+    flops_av = (2 * Lk - 1) * batch_heads * Lq * dv
+
+    total_flops = flops_qk + flops_scale + flops_mask + flops_softmax + flops_dropout + flops_av
+    return int(total_flops)
+
+
 # For MethodFLOPs
 def MethodFLOPs_zero(self_obj: Tensor, result: Tensor, *args_tail, **kwargs) -> int:
     return flops_zero()
@@ -410,6 +444,7 @@ FUNCTION_FLOPs_MAPPING = {
     'floordiv': FunctionFLOPs_zero,
     'flip': FunctionFLOPs_zero,
     'interpolate': FunctionFLOPs_interpolate,
+    'scaled_dot_product_attention': FunctionFLOPs_scaled_dot_product_attention,
 }
 METHOD_FLOPs_MAPPING = {
     'reshape': MethodFLOPs_zero,
